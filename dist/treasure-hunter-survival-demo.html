@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Treasure Hunter Survival</title>
+<style>
+/* Treasure Hunter Survival — giao diện mobile-first, pixel-art */
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: #101408; font-family: monospace; }
+#wrap { position: fixed; inset: 0; overflow: hidden; }
+
+#game {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  background: #2c6e31;
+  /* scale vừa màn hình, giữ tỉ lệ 3:2 */
+  width: min(100vw, 150vh); height: min(66.66vw, 100vh);
+}
+
+/* ---------- HUD ---------- */
+#hud { position: absolute; top: 8px; left: 8px; z-index: 5; pointer-events: none; }
+#status { display: inline-block; font-size: 12px; font-weight: bold; padding: 3px 8px;
+  border-radius: 10px; background: rgba(0,0,0,.55); color: #fff; margin-bottom: 6px; }
+#status.on { color: #5dff7a; } #status.off { color: #ffd76a; }
+.bars { display: flex; flex-direction: column; gap: 3px; }
+.bar { position: relative; width: 170px; height: 15px; background: rgba(0,0,0,.55);
+  border: 1px solid #000; border-radius: 3px; overflow: hidden; }
+.bar .fill { height: 100%; width: 100%; transition: width .15s; }
+.fill.hp { background: linear-gradient(#ff6a6a, #c92a2a); }
+.fill.st { background: linear-gradient(#6ad4ff, #1f8ac9); }
+.fill.hu { background: linear-gradient(#ffcf6a, #c98a1f); }
+.bar span { position: absolute; right: 4px; top: 0; font-size: 10px; color: #fff;
+  text-shadow: 1px 1px 0 #000; line-height: 15px; }
+#inv { margin-top: 6px; font-size: 13px; color: #fff; text-shadow: 1px 1px 0 #000;
+  background: rgba(0,0,0,.45); padding: 3px 8px; border-radius: 8px; display: inline-block; }
+
+/* ---------- feed ---------- */
+#feed { position: absolute; top: 8px; right: 8px; z-index: 5; text-align: right;
+  pointer-events: none; font-size: 13px; }
+#feed div { background: rgba(0,0,0,.55); color: #fff; padding: 3px 8px;
+  border-radius: 8px; margin-bottom: 4px; text-shadow: 1px 1px 0 #000; }
+
+/* ---------- chat ---------- */
+#chat { position: absolute; left: 8px; bottom: 8px; z-index: 6; width: min(320px, 60vw); }
+#chat-log { max-height: 110px; overflow-y: auto; font-size: 12px; color: #fff;
+  text-shadow: 1px 1px 0 #000; margin-bottom: 4px; pointer-events: none; }
+#chat-log div { background: rgba(0,0,0,.45); border-radius: 6px; padding: 2px 6px; margin-bottom: 2px; }
+#chat-input { width: 100%; font-family: monospace; font-size: 13px; padding: 6px 8px;
+  border-radius: 8px; border: 1px solid #555; background: rgba(0,0,0,.6); color: #fff; }
+
+/* ---------- joystick ---------- */
+#joy-zone { position: absolute; left: 0; bottom: 0; width: 50%; height: 70%; z-index: 4; }
+#joy-base { display: none; position: absolute; z-index: 7; width: 110px; height: 110px;
+  margin: -55px 0 0 -55px; border-radius: 50%;
+  background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.35); pointer-events: none; }
+#joy-knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px;
+  margin: -24px 0 0 -24px; border-radius: 50%;
+  background: rgba(255,255,255,.45); border: 2px solid rgba(255,255,255,.6); }
+
+/* ---------- nút bấm ---------- */
+#btns { position: absolute; right: 14px; bottom: 24px; z-index: 7; display: flex; gap: 12px; }
+#btns button { width: 64px; height: 64px; border-radius: 50%; font-size: 26px;
+  border: 2px solid rgba(255,255,255,.5); background: rgba(0,0,0,.45); color: #fff; }
+#btns button:active { background: rgba(255,255,255,.35); }
+
+#hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  font-size: 11px; color: rgba(255,255,255,.65); text-shadow: 1px 1px 0 #000;
+  z-index: 3; pointer-events: none; white-space: nowrap; }
+@media (pointer: coarse) { #hint { display: none; } }
+
+/* nút tắt/mở nhạc Sunny Land */
+#btn-mute { pointer-events: auto; margin-top: 6px; font-size: 16px; padding: 4px 8px;
+  background: rgba(0,0,0,.45); color: #fff; border: 1px solid rgba(255,255,255,.25);
+  border-radius: 8px; cursor: pointer; }
+#btn-mute:active { transform: scale(.94); }
+
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="960" height="640"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="status" class="off">● OFFLINE DEMO</div>
+    <div class="bars">
+      <div class="bar"><div id="bar-hp" class="fill hp"></div><span>HP</span></div>
+      <div class="bar"><div id="bar-st" class="fill st"></div><span>TL</span></div>
+      <div class="bar"><div id="bar-hu" class="fill hu"></div><span>ĐÓI</span></div>
+    </div>
+    <div id="inv">🪵0 🪨0 🌿0 🍖0 🪙0</div>
+    <button id="btn-mute" title="Bật/tắt nhạc">🔊</button>
+  </div>
+
+  <audio id="bgm" src="assets/audio/happywalking.ogg" loop preload="auto"></audio>
+
+  <!-- feed sự kiện (loot, boss...) -->
+  <div id="feed"></div>
+
+  <!-- chat -->
+  <div id="chat">
+    <div id="chat-log"></div>
+    <input id="chat-input" placeholder="Chat thế giới... (Enter để gửi)" maxlength="120">
+  </div>
+
+  <!-- joystick ảo (nửa trái màn hình) -->
+  <div id="joy-zone"></div>
+  <div id="joy-base"><div id="joy-knob"></div></div>
+
+  <!-- nút bấm (nửa phải) -->
+  <div id="btns">
+    <button id="btn-use" title="Tương tác (E)">✋</button>
+    <button id="btn-atk" title="Tấn công (Space)">⚔️</button>
+  </div>
+
+  <div id="hint">WASD di chuyển · Space đánh · E thu hoạch · Shift chạy nhanh</div>
+</div>
+
+<script>
+/* ==== shared/protocol.js ==== */
+/* ============================================================================
+ * Treasure Hunter Survival — Shared Protocol & Constants
+ * File dùng chung cho cả client (browser) và server (Node.js).
+ *  - Browser: <script src="../shared/protocol.js"> → dùng THS.Shared
+ *  - Node:    const { Msg, CFG } = require('../shared/protocol')
+ * ========================================================================== */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.THS = root.THS || {};
+    root.THS.Shared = factory();
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // ---- Message types: client -> server (c_*) và server -> client (s_*) ----
+  const Msg = {
+    C_HELLO:    'c_hello',     // -> { name }            chào server, xin slot
+    S_WELCOME:  's_welcome',    // <- { id, tick, snap, zone } cấp id + snapshot đầu
+    C_INPUT:    'c_input',      // -> { seq, dx, dy, sprint, attack, fx, fy }
+    S_SNAPSHOT: 's_snapshot',   // <- { tick, players, mobs, nodes, buildings, events }
+    C_CHAT:     'c_chat',       // -> { text }
+    S_CHAT:     's_chat',       // <- { from, text }
+    C_HARVEST:  'c_harvest',    // -> { nodeId }  tương tác: chặt / đào / hái
+    C_CRAFT:    'c_craft',      // -> { recipeId }
+    C_BUILD:    'c_build',      // -> { kind, x, y } đặt lều / bàn chế tạo / rương / tường
+  };
+
+  // ---- Cấu hình thế giới ----
+  const CFG = {
+    TICK: 1 / 20,              // server tick 20Hz
+    WORLD_W: 3200,
+    WORLD_H: 3200,
+    PLAYER_SPEED: 175,         // px/s
+    SPRINT_MULT: 1.5,
+    ATTACK_RANGE: 90,
+    ATTACK_CD: 0.45,           // giây giữa 2 đòn
+    VIEW_W: 960,               // độ phân giải logic của client
+    VIEW_H: 640,
+  };
+
+  // ---- Phẩm chất trang bị: Thường -> Tinh Lệ -> Sử Thi -> Huyền Thoại ----
+  const RARITY = [
+    { key: 'common',    name: 'Thường',      color: '#c9c9c9', mult: 1.0 },
+    { key: 'fine',      name: 'Tinh Lệ',     color: '#3fa7ff', mult: 1.25 },
+    { key: 'epic',      name: 'Sử Thi',      color: '#b44dff', mult: 1.6 },
+    { key: 'legendary', name: 'Huyền Thoại',  color: '#ffb43f', mult: 2.1 },
+  ];
+
+  // ---- Công thức chế tạo (đủ chạy prototype) ----
+  const RECIPES = [
+    { id: 'sword_wood',  name: 'Kiếm Gỗ',   cost: { wood: 8 },            atk: 6  },
+    { id: 'sword_iron',  name: 'Kiếm Sắt',   cost: { wood: 6, stone: 10 }, atk: 14 },
+    { id: 'bow_wood',    name: 'Cung Gỗ',    cost: { wood: 12 },           atk: 10 },
+    { id: 'staff_herb',  name: 'Trượng Thảo Dược', cost: { wood: 6, herb: 8 }, atk: 12 },
+  ];
+
+  // ---- Công trình xây dựng ----
+  const BUILDINGS = [
+    { kind: 'tent',      name: 'Lều',        cost: { wood: 10 } },
+    { kind: 'workbench', name: 'Bàn Chế Tạo', cost: { wood: 12, stone: 4 } },
+    { kind: 'chest',     name: 'Rương',       cost: { wood: 8 } },
+    { kind: 'wall',      name: 'Tường Gỗ',    cost: { wood: 4 } },
+  ];
+
+  return { Msg, CFG, RARITY, RECIPES, BUILDINGS };
+});
+
+</script>
+<script>
+/* ==== client/js/sprites.js ==== */
+/* ============================================================================
+ * sprites.js — Pixel-art vẽ bằng code (không cần file asset).
+ * Mỗi sprite là một "bản đồ ký tự": mỗi ký tự → 1 màu trong palette.
+ * Vẽ với imageSmoothingEnabled=false để giữ chất pixel-art khi phóng to.
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  const SCALE = 3; // 1 "pixel" art = 3px trên màn hình
+
+  function make(rows, palette) {
+    const h = rows.length;
+    const w = Math.max(...rows.map((r) => r.length));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    for (let y = 0; y < h; y++) {
+      const row = rows[y];
+      for (let x = 0; x < row.length; x++) {
+        const col = palette[row[x]];
+        if (!col) continue;               // '.' hoặc ký tự lạ = trong suốt
+        g.fillStyle = col;
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+    return c;
+  }
+
+  const DEFS = {
+    /* ------------------------------ nhân vật ------------------------------ */
+    hero: {
+      pal: { h: '#7a4a21', s: '#f2c89b', e: '#1c1c1c', a: '#3f6fd1', d: '#2c4f9e', p: '#33415c', b: '#5b3a1e' },
+      rows: [
+        '................',
+        '.....hhhhhh.....',
+        '....hhhhhhhh....',
+        '....hssssssh....',
+        '....hsessesh....',
+        '....hssssssh....',
+        '.....ssssss.....',
+        '......ssss......',
+        '....aaaaaaaa....',
+        '...aaaaaaaaaa...',
+        '...adaaaaaada...',
+        '...aaaaaaaaaa...',
+        '....pppppppp....',
+        '....ppp..ppp....',
+        '....bbb..bbb....',
+        '................',
+      ],
+    },
+    /* ------------------------------ quái ------------------------------ */
+    slime: {
+      pal: { g: '#58d68d', d: '#3aa76d', w: '#ffffff', b: '#123322' },
+      rows: [
+        '....gggggg....',
+        '..gggggggggg..',
+        '.gggggggggggg.',
+        '.gwwggggggwwg.',
+        '.gwbggggggwbg.',
+        'gggggggggggggg',
+        'gggggggggggggg',
+        '.gggggggggggg.',
+        '..dddddddddd..',
+      ],
+    },
+    wolf: {
+      pal: { f: '#8a8f98', d: '#5b6068', e: '#e33d3d', t: '#ffffff' },
+      rows: [
+        '................',
+        '..ff........ff..',
+        '..ffffffffffff..',
+        '..ffeffffffeff..',
+        '..ffffffffffff..',
+        '...ffftttffff...',
+        '...ffffffffff...',
+        '...ffffffffff...',
+        '....ffffffff....',
+        '....ff.ff.ff....',
+        '....dd.dd.dd....',
+        '................',
+      ],
+    },
+    goblin: {
+      pal: { g: '#7bc96f', e: '#ff3b3b', c: '#7a4a8c', w: '#ffffff' },
+      rows: [
+        '.....gggg.....',
+        '....gggggg....',
+        '....geggeg....',
+        '....gggggg....',
+        '.....gwwg.....',
+        '......gg......',
+        '....cccccc....',
+        '...cccccccc...',
+        '...cgccccgc...',
+        '...cccccccc...',
+        '....cccccc....',
+        '....cc..cc....',
+        '....cc..cc....',
+      ],
+    },
+    golem_boss: {
+      pal: { r: '#8d8d99', d: '#5f5f6b', e: '#ffb43f', l: '#ff6a2a' },
+      rows: [
+        '........rrrr........',
+        '......rrrrrrrr......',
+        '.....rrrrrrrrrr.....',
+        '.....reerrrreer.....',
+        '.....rrrrrrrrrr.....',
+        '......rrrrrrrr......',
+        '...rrrrrrrrrrrrrr...',
+        '..rrrrrddrrrrrrrrr..',
+        '..rrrrrrrrrrrrrrrr..',
+        '..rrrdrrrrrrdrrrrr..',
+        '.rrrrdrrrrrrdrrrrr.',
+        '.rrrrrrrrllrrrrrr.',
+        '.rrrrrrlllllrrrrr.',
+        '..rrrrrlllllrrrr..',
+        '..rrrrrdlldrrrrr..',
+        '...rrrrrddrrrr...',
+        '...rrr..rr..rr...',
+        '...ddd..dd..dd...',
+      ],
+    },
+    /* ------------------------------ tài nguyên / đồ đạc ------------------------------ */
+    tree: {
+      pal: { g: '#2f9e44', d: '#237032', t: '#7a4a21', k: '#5b3a1e' },
+      rows: [
+        '......gggggg......',
+        '....gggggggggg....',
+        '...gggggggggggg...',
+        '..ggdgggggggdgg...',
+        '..ggggggggggggg...',
+        '.gggggdgggggdggg..',
+        '.gggggggggggggg...',
+        '..gggggggggggg....',
+        '...gggggggggg.....',
+        '....gggggggg......',
+        '......gggg........',
+        '.......tt.........',
+        '.......tt.........',
+        '......tttt........',
+        '......tttt........',
+        '.....kkkkkk.......',
+      ],
+    },
+    rock: {
+      pal: { g: '#9aa0a8', d: '#6e747c', l: '#c9ced4' },
+      rows: [
+        '....gggggg....',
+        '..ggglggggg...',
+        '.ggggggggggg..',
+        '.gglggggdggg..',
+        'ggggggggggggg.',
+        'gggggdggggggg.',
+        '.ggggggggggg..',
+        '..ddddddddd...',
+      ],
+    },
+    herb: {
+      pal: { g: '#51cf66', d: '#2f9e44', f: '#ff8ab3' },
+      rows: [
+        '....ff....',
+        '...ffff...',
+        '....gg....',
+        '..ggdgg...',
+        '.gggdg....',
+        '.ggdggg...',
+        '..gggg....',
+        '...gg.....',
+      ],
+    },
+    chest: {
+      pal: { w: '#a06a2c', d: '#7a4f1f', g: '#ffd76a', k: '#3a3a3a' },
+      rows: [
+        '..wwwwwwwwww..',
+        '.wwwwwwwwwwww.',
+        '.wwddddddddww.',
+        '.wwwwwwwwwwww.',
+        'wwwwwwwwwwwwww',
+        'wwddwwggwwddww',
+        'wwddwwggwwddww',
+        'wwwwwwwwwwwwww',
+        '.wwwwwwwwwwww.',
+        '..kkkkkkkkkk..',
+      ],
+    },
+    tent: {
+      pal: { c: '#d9a441', d: '#a5762a', k: '#5b3a1e' },
+      rows: [
+        '.........cc.........',
+        '........cccc........',
+        '.......cccccc.......',
+        '......cccccccc......',
+        '.....ccccdccccc.....',
+        '....cccccdcccccc....',
+        '...cccccccdcccccc...',
+        '...kkkkkkkkkkkkkk...',
+        '...kcccccccccccck...',
+        '...kccckkkkkccck....',
+        '...kccck...kccck....',
+        '...kccck...kccck....',
+      ],
+    },
+    workbench: {
+      pal: { w: '#a06a2c', d: '#7a4f1f', k: '#3a3a3a', m: '#9aa0a8' },
+      rows: [
+        '.mmmm......mmmm...',
+        '.mmmm......mmmm...',
+        '..wwwwwwwwwwwwww..',
+        '..wddddddddddddw..',
+        '..wwwwwwwwwwwwww..',
+        '...ww..ww..ww.....',
+        '...ww..ww..ww.....',
+        '...kk..kk..kk.....',
+      ],
+    },
+    wall: {
+      pal: { w: '#a06a2c', d: '#7a4f1f' },
+      rows: [
+        '.ww.ww.ww.ww.ww..',
+        'wwwwwwwwwwwwwwww..',
+        '.ww.ww.ww.ww.ww..',
+        'wwwwwwwwwwwwwwww..',
+        '.ww.ww.ww.ww.ww..',
+        'wwwwwwwwwwwwwwww..',
+      ],
+    },
+  };
+
+  const cache = {};
+  function get(name) {
+    if (!cache[name]) {
+      const def = DEFS[name] || DEFS.slime;
+      const cv = make(def.rows, def.pal);
+      cache[name] = {
+        cv, w: cv.width * SCALE, h: cv.height * SCALE,
+        ax: (cv.width * SCALE) / 2, ay: cv.height * SCALE, // neo: giữa-chân
+      };
+    }
+    return cache[name];
+  }
+
+  // ánh xạ key quái server -> sprite
+  const MOB_SPRITE = { slime: 'slime', wolf: 'wolf', goblin: 'goblin', golem_boss: 'golem_boss' };
+  const NODE_SPRITE = { tree: 'tree', rock: 'rock', herb: 'herb' };
+  const BUILDING_SPRITE = { tent: 'tent', workbench: 'workbench', chest: 'chest', wall: 'wall' };
+
+  window.Sprites = { get, SCALE, MOB_SPRITE, NODE_SPRITE, BUILDING_SPRITE };
+})();
+
+</script>
+<script>
+/* ==== client/js/sunny.js ==== */
+/* ============================================================================
+ * sunny.js — Tích hợp asset Sunny Land (Luis Zuno / Ansimuz, CC0) vào game.
+ *  - Load PNG spritesheet, cắt frame, expose đúng interface {cv,w,h,ax,ay}
+ *    như Sprites để renderer dùng chung không cần sửa logic vẽ.
+ *  - frame(name, anim, t): chọn frame animation theo thời gian.
+ *  - still(name): sprite tĩnh (cây, đá, bụi...).
+ *  - Nếu ảnh load lỗi → has() = false → renderer tự fallback về Sprites vẽ code.
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  const IMG = 'assets/img/';
+
+  // scale: hệ số phóng (giữ số nguyên để pixel-art nét)
+  // faceLeft: sprite gốc nhìn sang trái (Foxy) → đảo logic flip
+  const DEFS = {
+    hero: {
+      scale: 2, faceLeft: true,
+      anims: {
+        idle: { f: 'foxy-idle.png', fw: 33, fh: 32, n: 4, fps: 6 },
+        run:  { f: 'foxy-run.png',  fw: 33, fh: 32, n: 6, fps: 12 },
+        jump: { f: 'foxy-jump.png', fw: 33, fh: 32, n: 2, fps: 8 },
+        hurt: { f: 'foxy-hurt.png', fw: 33, fh: 32, n: 2, fps: 8 },
+      },
+    },
+    slime: { // frog
+      scale: 2, faceLeft: true,
+      anims: {
+        idle: { f: 'frog-idle.png', fw: 35, fh: 32, n: 4, fps: 6 },
+        jump: { f: 'frog-jump.png', fw: 35, fh: 32, n: 3, fps: 10 },
+      },
+    },
+    wolf: { // opossum
+      scale: 2, faceLeft: true,
+      anims: {
+        idle: { f: 'opossum.png', fw: 36, fh: 28, n: 6, fps: 10 },
+      },
+    },
+    goblin: { // eagle
+      scale: 2, faceLeft: false,
+      anims: {
+        idle: { f: 'eagle-attack.png', fw: 40, fh: 41, n: 4, fps: 7 },
+      },
+    },
+    cherry: {
+      scale: 2, faceLeft: false,
+      anims: { idle: { f: 'cherry.png', fw: 15, fh: 21, n: 7, fps: 10 } },
+    },
+    gem: {
+      scale: 2, faceLeft: false,
+      anims: { idle: { f: 'gem.png', fw: 15, fh: 15, n: 5, fps: 10 } },
+    },
+    tree: { still: 'pine.png',  scale: 1, faceLeft: false },
+    rock: { still: 'rock.png',  scale: 2, faceLeft: false },
+    herb: { still: 'bush.png',  scale: 1, faceLeft: false },
+  };
+
+  const files = {};   // file -> {img, ok}
+  const frames = {};  // name -> anim -> [canvas...]
+  const stills = {};  // name -> canvas
+
+  function loadFile(f) {
+    if (files[f]) return files[f].p;
+    const img = new Image();
+    const rec = { img, ok: false };
+    rec.p = new Promise((resolve) => {
+      img.onload = () => { rec.ok = true; resolve(); };
+      img.onerror = () => resolve();
+      img.src = IMG + f;
+    });
+    files[f] = rec;
+    return rec.p;
+  }
+
+  function slice(img, fw, fh, n, scale) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement('canvas');
+      c.width = fw * scale; c.height = fh * scale;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * fw, 0, fw, fh, 0, 0, c.width, c.height);
+      out.push(c);
+    }
+    return out;
+  }
+
+  function wrap(cv, scale) {
+    return {
+      cv, w: cv.width, h: cv.height,
+      ax: cv.width / 2, ay: cv.height, // neo: giữa-chân (giống Sprites)
+    };
+  }
+
+  const ready = (async () => {
+    const uniq = new Set();
+    for (const name of Object.keys(DEFS)) {
+      const d = DEFS[name];
+      if (d.still) uniq.add(d.still);
+      else for (const a of Object.values(d.anims)) uniq.add(a.f);
+    }
+    await Promise.all([...uniq].map(loadFile));
+    // cắt frame sau khi đã load xong
+    for (const name of Object.keys(DEFS)) {
+      const d = DEFS[name];
+      if (d.still) {
+        const rec = files[d.still];
+        if (rec && rec.ok) {
+          const c = document.createElement('canvas');
+          c.width = rec.img.width * d.scale; c.height = rec.img.height * d.scale;
+          const g = c.getContext('2d');
+          g.imageSmoothingEnabled = false;
+          g.drawImage(rec.img, 0, 0, c.width, c.height);
+          stills[name] = c;
+        }
+      } else {
+        frames[name] = {};
+        for (const [an, a] of Object.entries(d.anims)) {
+          const rec = files[a.f];
+          if (rec && rec.ok) frames[name][an] = slice(rec.img, a.fw, a.fh, a.n, d.scale);
+        }
+      }
+    }
+  })();
+
+  function has(name) {
+    const d = DEFS[name];
+    if (!d) return false;
+    if (d.still) return !!stills[name];
+    return !!(frames[name] && Object.keys(frames[name]).length);
+  }
+
+  function frame(name, anim, t) {
+    const d = DEFS[name];
+    if (!d || d.still || !frames[name]) return null;
+    const fr = frames[name][anim] || frames[name][Object.keys(frames[name])[0]];
+    if (!fr || !fr.length) return null;
+    const a = d.anims[anim] || d.anims[Object.keys(d.anims)[0]];
+    const idx = Math.floor(t * a.fps) % fr.length;
+    return wrap(fr[idx]);
+  }
+
+  function still(name) {
+    const d = DEFS[name];
+    if (!d || !d.still || !stills[name]) return null;
+    return wrap(stills[name]);
+  }
+
+  function faceLeft(name) {
+    const d = DEFS[name];
+    return !!(d && d.faceLeft);
+  }
+
+  window.Sunny = { ready, has, frame, still, faceLeft };
+})();
+
+</script>
+<script>
+/* ==== client/js/input.js ==== */
+/* ============================================================================
+ * input.js — Điều khiển: WASD/mũi tên + Space (PC), joystick ảo + nút (mobile)
+ * Joystick động: chạm nửa trái màn hình → gốc joystick hiện tại điểm chạm.
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  class Input {
+    constructor() {
+      this.keys = {};
+      this.joy = { active: false, id: null, dx: 0, dy: 0 };
+      this.attackQueued = false;
+      this.interactQueued = false;
+      this._bindKeys();
+      this._bindTouch();
+    }
+
+    _bindKeys() {
+      addEventListener('keydown', (e) => {
+        if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+        this.keys[e.code] = true;
+        if (e.code === 'Space') { this.attackQueued = true; e.preventDefault(); }
+        if (e.code === 'KeyE') this.interactQueued = true;
+      });
+      addEventListener('keyup', (e) => { this.keys[e.code] = false; });
+    }
+
+    _bindTouch() {
+      const zone = document.getElementById('joy-zone');
+      const base = document.getElementById('joy-base');
+      const knob = document.getElementById('joy-knob');
+      const R = 52; // bán kính joystick (px CSS)
+
+      const setKnob = (dx, dy) => {
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      };
+
+      zone.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (this.joy.active) return;
+        const t = e.changedTouches[0];
+        this.joy.active = true; this.joy.id = t.identifier;
+        base.style.display = 'block';
+        base.style.left = t.clientX + 'px';
+        base.style.top = t.clientY + 'px';
+        this.joy.bx = t.clientX; this.joy.by = t.clientY;
+        this.joy.dx = 0; this.joy.dy = 0; setKnob(0, 0);
+      }, { passive: false });
+
+      const move = (e) => {
+        for (const t of e.changedTouches) {
+          if (!this.joy.active || t.identifier !== this.joy.id) continue;
+          e.preventDefault();
+          let dx = t.clientX - this.joy.bx, dy = t.clientY - this.joy.by;
+          const l = Math.hypot(dx, dy);
+          if (l > R) { dx = (dx / l) * R; dy = (dy / l) * R; }
+          this.joy.dx = dx / R; this.joy.dy = dy / R;
+          setKnob(dx, dy);
+        }
+      };
+      const end = (e) => {
+        for (const t of e.changedTouches) {
+          if (!this.joy.active || t.identifier !== this.joy.id) continue;
+          this.joy.active = false; this.joy.dx = 0; this.joy.dy = 0;
+          base.style.display = 'none'; setKnob(0, 0);
+        }
+      };
+      zone.addEventListener('touchmove', move, { passive: false });
+      zone.addEventListener('touchend', end);
+      zone.addEventListener('touchcancel', end);
+
+      const btnAtk = document.getElementById('btn-atk');
+      const btnUse = document.getElementById('btn-use');
+      btnAtk.addEventListener('touchstart', (e) => { e.preventDefault(); this.attackQueued = true; }, { passive: false });
+      btnUse.addEventListener('touchstart', (e) => { e.preventDefault(); this.interactQueued = true; }, { passive: false });
+      btnAtk.addEventListener('mousedown', () => { this.attackQueued = true; });
+      btnUse.addEventListener('mousedown', () => { this.interactQueued = true; });
+    }
+
+    /** vector di chuyển đã chuẩn hoá (-1..1) */
+    axis() {
+      let x = 0, y = 0;
+      const k = this.keys;
+      if (k.KeyA || k.ArrowLeft) x -= 1;
+      if (k.KeyD || k.ArrowRight) x += 1;
+      if (k.KeyW || k.ArrowUp) y -= 1;
+      if (k.KeyS || k.ArrowDown) y += 1;
+      if (this.joy.active) { x = this.joy.dx; y = this.joy.dy; }
+      const l = Math.hypot(x, y);
+      if (l > 1) { x /= l; y /= l; }
+      return { x, y };
+    }
+
+    consumeAttack() { const a = this.attackQueued; this.attackQueued = false; return a; }
+    consumeInteract() { const a = this.interactQueued; this.interactQueued = false; return a; }
+  }
+
+  window.Input = Input;
+})();
+
+</script>
+<script>
+/* ==== client/js/net.js ==== */
+/* ============================================================================
+ * net.js — WebSocket client. Gửi input 20Hz (chỉ khi thay đổi hoặc 200ms),
+ * nhận snapshot → game.onNet(). Tự reconnect khi rớt mạng.
+ * ========================================================================== */
+(function () {
+  'use strict';
+  const { Msg } = THS.Shared;
+
+  // Hostname công cộng của WebSocket server (điền sau khi tạo tunnel / deploy).
+  // Deploy demo 2026-10-15 qua cloudflared quick tunnel.
+  const WS_HOST = 'THS_WS_HOST_PLACEHOLDER';
+
+  class Net {
+    constructor(game) {
+      this.game = game;
+      this.ws = null;
+      this.connected = false;
+      this.seq = 0;
+      this.lastSent = '';
+      this.lastForce = 0;
+    }
+
+    connect() {
+      // Thứ tự ưu tiên URL server:
+      //  1) ?server=wss://... trên URL (ép cứng, dùng khi test)
+      //  2) deploy online (không phải localhost/file:) → wss://WS_HOST
+      //  3) local dev → ws://localhost:8080
+      const q = new URLSearchParams(location.search);
+      let url = q.get('server');
+      if (!url) {
+        const h = location.hostname;
+        const isLocal = !h || h === 'localhost' || h === '127.0.0.1' || location.protocol === 'file:';
+        url = isLocal ? `ws://${h || 'localhost'}:8080` : `wss://${WS_HOST}`;
+      }
+      let ws;
+      try { ws = new WebSocket(url); } catch { return this.game.goOffline(); }
+      this.ws = ws;
+
+      ws.onopen = () => {
+        this.connected = true;
+        this.send({ t: Msg.C_HELLO, name: 'Hunter' + Math.floor(Math.random() * 900 + 100) });
+        this.game.ui.setOnline(true);
+      };
+      ws.onmessage = (e) => {
+        try { this.game.onNet(JSON.parse(e.data)); } catch { /* bỏ packet lỗi */ }
+      };
+      ws.onclose = () => {
+        this.connected = false;
+        this.game.ui.setOnline(false);
+        this.game.goOffline();                       // rớt mạng → chơi demo offline
+        setTimeout(() => this.connect(), 3000);      // thử nối lại
+      };
+      ws.onerror = () => { try { ws.close(); } catch {} };
+      // nếu 2.5s chưa open được → coi như offline (mở file:// không có server)
+      setTimeout(() => { if (!this.connected) this.game.goOffline(); }, 2500);
+    }
+
+    send(o) {
+      if (this.connected && this.ws.readyState === 1) this.ws.send(JSON.stringify(o));
+    }
+
+    /** Gửi input: 20Hz khi đổi, ép gửi mỗi 200ms để giữ nhịp server */
+    sendInput(ax, ay, sprint, attack) {
+      this.seq++;
+      const now = performance.now();
+      const payload = { t: Msg.C_INPUT, seq: this.seq, dx: +ax.toFixed(3), dy: +ay.toFixed(3), sprint, attack: !!attack };
+      const key = `${payload.dx},${payload.dy},${sprint},${attack}`;
+      if (key !== this.lastSent || now - this.lastForce > 200) {
+        this.send(payload);
+        this.lastSent = key; this.lastForce = now;
+      }
+    }
+  }
+
+  window.Net = Net;
+})();
+
+</script>
+<script>
+/* ==== client/js/ui.js ==== */
+/* ============================================================================
+ * ui.js — HUD: thanh HP / thể lực / đói, túi đồ, chat, bảng trạng thái mạng.
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  class UI {
+    constructor() {
+      this.el = (id) => document.getElementById(id);
+      this.hp = this.el('bar-hp'); this.st = this.el('bar-st');
+      this.hu = this.el('bar-hu'); this.inv = this.el('inv');
+      this.chat = this.el('chat-log'); this.feed = this.el('feed');
+      this.status = this.el('status');
+      this._bindChat();
+    }
+
+    _bindChat() {
+      const input = this.el('chat-input');
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && input.value.trim()) {
+          window.__game.net.send({ t: THS.Shared.Msg.C_CHAT, text: input.value.trim() });
+          input.value = ''; input.blur();
+        }
+        e.stopPropagation();
+      });
+    }
+
+    setOnline(on) {
+      this.status.textContent = on ? '● ONLINE' : '● OFFLINE DEMO';
+      this.status.className = on ? 'on' : 'off';
+    }
+
+    updateHUD(me) {
+      if (!me) return;
+      this.hp.style.width = Math.max(0, (me.hp / me.maxHp) * 100) + '%';
+      this.st.style.width = Math.max(0, me.stamina || 0) + '%';
+      this.hu.style.width = Math.max(0, me.hunger || 0) + '%';
+      const inv = me.inv || {};
+      this.inv.textContent =
+        `🪵${inv.wood || 0} 🪨${inv.stone || 0} 🌿${inv.herb || 0} 🍖${inv.food || 0} 🪙${inv.gold || 0}` +
+        (me.weapon ? ` · ⚔ ${me.weapon}` : '');
+    }
+
+    addChat(from, text) {
+      const d = document.createElement('div');
+      d.innerHTML = `<b>${from}:</b> `;
+      d.appendChild(document.createTextNode(text));
+      this.chat.appendChild(d);
+      while (this.chat.children.length > 30) this.chat.firstChild.remove();
+      this.chat.scrollTop = this.chat.scrollHeight;
+    }
+
+    feedMsg(text, color) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      if (color) d.style.color = color;
+      this.feed.appendChild(d);
+      while (this.feed.children.length > 6) this.feed.firstChild.remove();
+      setTimeout(() => d.remove(), 6000);
+    }
+  }
+
+  window.UI = UI;
+})();
+
+</script>
+<script>
+/* ==== client/js/renderer.js ==== */
+/* ============================================================================
+ * renderer.js — Camera bám theo nhân vật + Y-sorting cho đồ hoạ top-down.
+ *  - Camera: lerp mượt về player, clamp trong biên thế giới.
+ *  - Y-sort: mọi entity/node/building gom vào 1 danh sách, sort theo chân (y),
+ *    vẽ từ trên xuống → vật ở dưới (y lớn) đè lên vật ở trên. Chuẩn 2D top-down.
+ *  - Ground: tile cỏ prerender 4 biến thể, chọn theo hash → không tốn draw call.
+ * ========================================================================== */
+(function () {
+  'use strict';
+  const { CFG } = THS.Shared;
+  const TILE = 64;
+
+  function hash2(x, y) {
+    let h = (x * 374761393 + y * 668265263) | 0;
+    h = (h ^ (h >> 13)) * 1274126177;
+    return Math.abs(h ^ (h >> 16));
+  }
+
+  class Renderer {
+    constructor(canvas) {
+      this.cv = canvas;
+      this.g = canvas.getContext('2d');
+      this.g.imageSmoothingEnabled = false;
+      this.cam = { x: CFG.WORLD_W / 2 - CFG.VIEW_W / 2, y: CFG.WORLD_H / 2 - CFG.VIEW_H / 2 };
+      this.tiles = this._makeTiles();
+      this.effects = []; // {type:'dmg'|'tele'|'die', ...}
+      this.time = 0;
+      this._dirs = new WeakMap(); // entity -> {x, dir} để flip sprite theo hướng
+      this._movs = new WeakMap(); // entity -> {x,y,t} để biết đang di chuyển
+    }
+
+    _makeTiles() {
+      const variants = [];
+      for (let v = 0; v < 4; v++) {
+        const c = document.createElement('canvas');
+        c.width = c.height = TILE;
+        const g = c.getContext('2d');
+        g.fillStyle = v % 2 ? '#3f9e4d' : '#46a854';
+        g.fillRect(0, 0, TILE, TILE);
+        for (let i = 0; i < 26; i++) { // đốm cỏ
+          g.fillStyle = Math.random() < 0.5 ? '#37903f' : '#57b565';
+          g.fillRect((Math.random() * TILE) | 0, (Math.random() * TILE) | 0, 2, 3);
+        }
+        variants.push(c);
+      }
+      return variants;
+    }
+
+    addEffect(e) { this.effects.push(Object.assign({ born: this.time }, e)); }
+
+    /* Chọn sprite để vẽ: ưu tiên Sunny Land (có animation), fallback Sprites vẽ code */
+    _resolve(d) {
+      const t = this.time;
+      const sunnyOn = typeof Sunny !== 'undefined' && Sunny.has(d.key);
+      let s, flip = 1;
+      if (d.kind === 'player') {
+        const anim = this._moving(d.e) ? 'run' : 'idle';
+        s = (sunnyOn && Sunny.frame('hero', anim, t)) || Sprites.get('hero');
+        flip = this._flip(d.e, typeof Sunny !== 'undefined' && Sunny.faceLeft('hero'));
+      } else if (d.kind === 'mob') {
+        const anim = (d.key === 'slime') ? (this._moving(d.e) ? 'jump' : 'idle') : 'idle';
+        s = (sunnyOn && Sunny.frame(d.key, anim, t)) || Sprites.get(d.key);
+        flip = this._flip(d.e, typeof Sunny !== 'undefined' && Sunny.faceLeft(d.key));
+      } else if (d.kind === 'node') {
+        s = (sunnyOn && Sunny.still(d.key)) || Sprites.get(d.key);
+      } else {
+        s = Sprites.get(d.key);
+      }
+      return { s, flip };
+    }
+
+    // entity có đang di chuyển không (dựa trên vị trí 0.3s gần nhất)
+    _moving(e) {
+      let st = this._movs.get(e);
+      const now = this.time;
+      if (!st) { st = { x: e.x, y: e.y, t: -9 }; this._movs.set(e, st); }
+      const dx = e.x - st.x, dy = e.y - st.y;
+      if (dx * dx + dy * dy > 9) { st.x = e.x; st.y = e.y; st.t = now; }
+      return now - st.t < 0.3;
+    }
+
+    // hướng nhìn: 1 = phải, -1 = trái (có đảo nếu sprite gốc nhìn sang trái)
+    _flip(e, faceLeft) {
+      let st = this._dirs.get(e);
+      if (!st) { st = { x: e.x, dir: 1 }; this._dirs.set(e, st); }
+      if (e.x > st.x + 2) { st.dir = 1; st.x = e.x; }
+      else if (e.x < st.x - 2) { st.dir = -1; st.x = e.x; }
+      return (faceLeft ? -st.dir : st.dir) >= 0 ? 1 : -1;
+    }
+
+    /* ------------------------------ render chính ------------------------------ */
+    render(state, me, dt) {
+      const g = this.g;
+      this.time += dt;
+
+      // camera bám theo player (lerp mượt)
+      if (me) {
+        const k = Math.min(1, 7 * dt);
+        this.cam.x += (me.x - CFG.VIEW_W / 2 - this.cam.x) * k;
+        this.cam.y += (me.y - CFG.VIEW_H / 2 - this.cam.y) * k;
+        this.cam.x = Math.max(0, Math.min(CFG.WORLD_W - CFG.VIEW_W, this.cam.x));
+        this.cam.y = Math.max(0, Math.min(CFG.WORLD_H - CFG.VIEW_H, this.cam.y));
+      }
+      const cx = this.cam.x, cy = this.cam.y;
+
+      // nền cỏ
+      const x0 = Math.floor(cx / TILE), y0 = Math.floor(cy / TILE);
+      const x1 = Math.ceil((cx + CFG.VIEW_W) / TILE), y1 = Math.ceil((cy + CFG.VIEW_H) / TILE);
+      for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+        g.drawImage(this.tiles[hash2(tx, ty) % 4], tx * TILE - cx, ty * TILE - cy);
+      }
+
+      // vòng PvP (đứt nét đỏ)
+      if (state.zone) this._drawZone(g, state.zone, cx, cy);
+
+      // telegraph của boss vẽ TRÊN mặt đất, DƯỚI entity
+      for (const e of this.effects) if (e.type === 'tele') this._drawTele(g, e, cx, cy);
+
+      /* ---- Y-SORT: gom tất cả drawable, sort theo chân (y), vẽ lần lượt ---- */
+      const draws = [];
+      for (const n of state.nodes.values()) {
+        draws.push({ y: n.y, x: n.x, kind: 'node', e: n, key: Sprites.NODE_SPRITE[n.kind] || 'tree' });
+      }
+      for (const b of state.buildings) {
+        draws.push({ y: b.y, x: b.x, kind: 'bld', e: b, key: Sprites.BUILDING_SPRITE[b.kind] || 'chest' });
+      }
+      for (const m of state.mobs.values()) {
+        draws.push({ y: m.y, x: m.x, kind: 'mob', e: m, key: Sprites.MOB_SPRITE[m.key] || 'slime' });
+      }
+      for (const p of state.players.values()) {
+        draws.push({ y: p.y, x: p.x, kind: 'player', e: p, key: 'hero', isMe: me && p.id === me.id });
+      }
+      draws.sort((a, b) => a.y - b.y);
+
+      for (const d of draws) {
+        const r = this._resolve(d);
+        const s = r.s;
+        const sx = Math.round(d.x - s.ax - cx), sy = Math.round(d.y - s.ay - cy);
+        if (sx > CFG.VIEW_W || sy > CFG.VIEW_H || sx + s.w < 0 || sy + s.h < 0) continue; // culling
+        // bóng đổ
+        g.fillStyle = 'rgba(0,0,0,0.25)';
+        g.beginPath();
+        g.ellipse(d.x - cx, d.y - cy, s.w * 0.32, 7, 0, 0, 7);
+        g.fill();
+        if (r.flip < 0) { // lật ngang quanh trục giữa entity
+          g.save();
+          g.translate(Math.round(d.x - cx), 0);
+          g.scale(-1, 1);
+          g.drawImage(s.cv, -s.ax, sy, s.w, s.h);
+          g.restore();
+        } else {
+          g.drawImage(s.cv, sx, sy, s.w, s.h);
+        }
+        if (d.kind === 'mob') this._hpBar(g, d.e, d.x - cx, d.y - cy - s.h - 8);
+        if (d.kind === 'player') {
+          if (!d.isMe) this._name(g, d.e.name, d.x - cx, d.y - cy - s.h - 8);
+          else if (d.e.hp < d.e.maxHp) this._hpBar(g, d.e, d.x - cx, d.y - cy - s.h - 8, '#4dff6a');
+        }
+      }
+
+      // damage numbers / hiệu ứng chết
+      this.effects = this.effects.filter((e) => this._drawFx(g, e, cx, cy));
+
+      // chữ "BOSS" nhấp nháy trên đầu boss
+      for (const m of state.mobs.values()) {
+        if (!m.boss) continue;
+        g.fillStyle = `rgba(255,60,60,${0.6 + 0.4 * Math.sin(this.time * 6)})`;
+        g.font = 'bold 13px monospace'; g.textAlign = 'center';
+        g.fillText('☠ BOSS ☠', m.x - cx, m.y - cy - Sprites.get('golem_boss').h - 24);
+      }
+    }
+
+    _hpBar(g, e, x, y, col) {
+      const w = 30, pct = Math.max(0, e.hp / e.maxHp);
+      g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(x - w / 2, y, w, 5);
+      g.fillStyle = col || (pct > 0.5 ? '#4dff6a' : pct > 0.25 ? '#ffcf3d' : '#ff4d4d');
+      g.fillRect(x - w / 2 + 1, y + 1, (w - 2) * pct, 3);
+    }
+
+    _name(g, name, x, y) {
+      g.font = '11px monospace'; g.textAlign = 'center';
+      g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillText(name, x + 1, y + 1);
+      g.fillStyle = '#fff'; g.fillText(name, x, y);
+    }
+
+    _drawZone(g, z, cx, cy) {
+      const x = z.x - cx, y = z.y - cy;
+      if (x + z.r < 0 || y + z.r < 0 || x - z.r > CFG.VIEW_W || y - z.r > CFG.VIEW_H) return;
+      g.save();
+      g.strokeStyle = 'rgba(255,70,70,0.8)'; g.lineWidth = 3; g.setLineDash([14, 10]);
+      g.beginPath(); g.arc(x, y, z.r, 0, 7); g.stroke();
+      g.setLineDash([]);
+      g.font = 'bold 15px monospace'; g.textAlign = 'center';
+      g.fillStyle = 'rgba(255,70,70,0.9)';
+      g.fillText('⚔ KHU HỖN CHIẾN (PvP) ⚔', x, y - z.r - 10);
+      g.restore();
+    }
+
+    _drawTele(g, e, cx, cy) {
+      const age = this.time - e.born;
+      if (age > e.dur) return;
+      const pulse = 0.35 + 0.25 * Math.sin(this.time * 14);
+      g.fillStyle = `rgba(255,40,40,${pulse})`;
+      g.beginPath(); g.arc(e.x - cx, e.y - cy, e.r, 0, 7); g.fill();
+      g.strokeStyle = '#ff2a2a'; g.lineWidth = 2;
+      g.beginPath(); g.arc(e.x - cx, e.y - cy, e.r, 0, 7); g.stroke();
+      if (e.label) {
+        g.font = 'bold 12px monospace'; g.textAlign = 'center';
+        g.fillStyle = '#ff6a6a';
+        g.fillText(e.label, e.x - cx, e.y - cy - e.r - 6);
+      }
+    }
+
+    _drawFx(g, e, cx, cy) {
+      const age = this.time - e.born;
+      if (e.type === 'dmg') {
+        if (age > 0.9) return false;
+        g.font = `bold ${e.crit ? 17 : 13}px monospace`; g.textAlign = 'center';
+        g.fillStyle = e.color || (e.crit ? '#ffd23d' : '#ffffff');
+        g.fillText(String(e.val), e.x - cx, e.y - cy - age * 46);
+        return true;
+      }
+      if (e.type === 'die') {
+        if (age > 0.6) return false;
+        const gs = (typeof Sunny !== 'undefined' && Sunny.has('gem')) ? Sunny.frame('gem', 'idle', age * 2) : null;
+        g.globalAlpha = Math.max(0, 1 - age * 1.6);
+        if (gs) g.drawImage(gs.cv, e.x - cx - gs.ax, e.y - cy - gs.ay - age * 30, gs.w, gs.h);
+        else { g.font = '16px monospace'; g.textAlign = 'center'; g.fillText('💀', e.x - cx, e.y - cy - age * 30); }
+        g.globalAlpha = 1;
+        return true;
+      }
+      if (e.type === 'tele') return age <= e.dur + 0.1; // vòng telegraph tự hết
+      return false;
+    }
+  }
+
+  window.Renderer = Renderer;
+})();
+
+</script>
+<script>
+/* ==== client/js/game.js ==== */
+/* ============================================================================
+ * game.js — Game (client): vòng lặp fixed-timestep, nội suy mạng, demo offline.
+ *  - update() chạy đúng 60 bước/giây (accumulator) → vật lý ổn định mọi máy.
+ *  - Online: server authoritative; client nội suy vị trí entity cho mượt.
+ *  - Offline (không có server): Demo chạy local để test gameplay ngay.
+ * ========================================================================== */
+(function () {
+  'use strict';
+  const { Msg, CFG } = THS.Shared;
+  const STEP = 1 / 60;
+
+  class Game {
+    constructor(canvas) {
+      this.renderer = new Renderer(canvas);
+      this.input = new Input();
+      this.ui = new UI();
+      this.net = new Net(this);
+      window.__game = this;
+
+      this.meId = null;
+      this.online = false;
+      this.zone = null;
+      this.players = new Map();   // id -> {.., x,y (render), tx,ty (đích)}
+      this.mobs = new Map();
+      this.nodes = new Map();
+      this.buildings = [];
+      this.demo = null;
+
+      this.last = 0; this.acc = 0;
+      this.facing = { x: 1, y: 0 };
+      this.loop = this.loop.bind(this);
+    }
+
+    boot() {
+      this.ui.setOnline(false);
+      this.net.connect();           // không có server → goOffline() → demo
+      requestAnimationFrame(this.loop);
+    }
+
+    goOffline() {
+      if (this.online || this.demo) return;
+      this.online = false;
+      this.demo = new Demo(this);
+      this.ui.feedMsg('Chế độ OFFLINE DEMO — bật server để chơi multiplayer', '#ffd76a');
+    }
+
+    /* ------------------------------ network in ------------------------------ */
+    onNet(msg) {
+      switch (msg.t) {
+        case Msg.S_WELCOME:
+          this.online = true; this.demo = null;
+          this.meId = msg.id; this.zone = msg.zone || null;
+          this.applySnapshot(msg.snap);
+          break;
+        case Msg.S_SNAPSHOT:
+          this.applySnapshot(msg);
+          for (const e of msg.events || []) this.applyEvent(e);
+          break;
+        case Msg.S_CHAT:
+          this.ui.addChat(msg.from, msg.text);
+          break;
+      }
+    }
+
+    applySnapshot(s) {
+      this._syncMap(this.players, s.players);
+      this._syncMap(this.mobs, s.mobs);
+      this._syncMap(this.nodes, s.nodes);
+      this.buildings = s.buildings || [];
+    }
+
+    _syncMap(map, arr) {
+      const seen = new Set();
+      for (const e of arr || []) {
+        seen.add(e.id);
+        let o = map.get(e.id);
+        if (!o) { o = Object.assign({ x: e.x, y: e.y }, e); map.set(e.id, o); }
+        else { o.tx = e.x; o.ty = e.y; Object.assign(o, e); o.x = o.x ?? e.x; o.y = o.y ?? e.y; }
+        if (o.tx === undefined) { o.tx = e.x; o.ty = e.y; }
+      }
+      for (const id of [...map.keys()]) if (!seen.has(id)) map.delete(id);
+    }
+
+    applyEvent(e) {
+      if (e.type === 'dmg' || e.type === 'tele' || e.type === 'die') this.renderer.addEffect(e);
+      else if (e.type === 'loot' && (!e.to || e.to === this.meId)) this.ui.feedMsg(e.text, e.color);
+      else if (e.type === 'sys') this.ui.feedMsg(e.text, '#9fd0ff');
+    }
+
+    me() { return this.players.get(this.meId); }
+
+    /* ------------------------------ game loop ------------------------------ */
+    loop(t) {
+      requestAnimationFrame(this.loop);
+      if (!this.last) this.last = t;
+      let dt = (t - this.last) / 1000;
+      this.last = t;
+      if (dt > 0.25) dt = 0.25;      // tab ẩn lâu → không "nhảy cóc"
+
+      this.acc += dt;
+      let n = 0;
+      while (this.acc >= STEP && n < 5) { this.update(STEP); this.acc -= STEP; n++; }
+
+      const me = this.online ? this.me() : (this.demo && this.demo.player);
+      this.renderer.render(
+        { players: this.players, mobs: this.mobs, nodes: this.nodes, buildings: this.buildings, zone: this.zone },
+        me, dt
+      );
+      this.ui.updateHUD(me);
+    }
+
+    update(dt) {
+      const ax = this.input.axis();
+      if (ax.x || ax.y) { const l = Math.hypot(ax.x, ax.y); this.facing = { x: ax.x / l, y: ax.y / l }; }
+      const attack = this.input.consumeAttack();
+      const interact = this.input.consumeInteract();
+
+      if (this.online) {
+        const sprint = !!(this.input.keys.ShiftLeft || this.input.keys.ShiftRight);
+        this.net.sendInput(ax.x, ax.y, sprint, attack);
+        if (interact) { // E: thu hoạch node gần nhất
+          const me = this.me();
+          if (me) {
+            let best = null, bd = 95 * 95;
+            for (const nd of this.nodes.values()) {
+              const d = (nd.x - me.x) ** 2 + (nd.y - me.y) ** 2;
+              if (d < bd) { bd = d; best = nd; }
+            }
+            if (best) this.net.send({ t: Msg.C_HARVEST, nodeId: best.id });
+          }
+        }
+        // nội suy mọi entity về vị trí server
+        const k = Math.min(1, 12 * dt);
+        for (const map of [this.players, this.mobs]) {
+          for (const e of map.values()) {
+            if (e.tx !== undefined) { e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; }
+          }
+        }
+      } else if (this.demo) {
+        this.demo.update(dt, ax, attack, interact);
+      }
+    }
+  }
+
+  /* ==========================================================================
+   * Demo — mô phỏng local tối giản khi không có server (để test ngay).
+   * ========================================================================== */
+  class Demo {
+    constructor(game) {
+      this.game = game;
+      const cx = CFG.WORLD_W / 2, cy = CFG.WORLD_H / 2;
+      this.player = {
+        id: 'me', name: 'Bạn', x: cx, y: cy, hp: 100, maxHp: 100,
+        stamina: 100, hunger: 100, dir: 1, dead: false,
+        inv: { wood: 0, stone: 0, herb: 0, food: 3, gold: 0 }, weapon: 'Tay Không',
+      };
+      game.players.set('me', this.player);
+      game.meId = 'me';
+      const R = (a, b) => a + Math.random() * (b - a);
+      const kinds = ['slime', 'slime', 'slime', 'wolf', 'slime', 'goblin'];
+      kinds.forEach((key, i) => {
+        const id = 'd' + i;
+        game.mobs.set(id, {
+          id, key, x: cx + R(-400, 400), y: cy + R(-400, 400),
+          hx: cx, hy: cy, hp: 40, maxHp: 40, tx: cx, ty: cy, wt: R(1, 3), atkCd: 0,
+        });
+      });
+      ['tree', 'tree', 'rock', 'herb', 'tree', 'rock'].forEach((kind, i) => {
+        const id = 'n' + i;
+        game.nodes.set(id, { id, kind, x: cx + R(-500, 500), y: cy + R(-300, 300), hp: 3 });
+      });
+    }
+
+    dmg(atk, def) {
+      const mit = def / (def + 120);
+      return Math.max(1, Math.round(atk * (1 - mit) * (0.9 + Math.random() * 0.2)));
+    }
+
+    update(dt, ax, attack) {
+      const g = this.game, p = this.player;
+      const sp = 175;
+      p.x += ax.x * sp * dt; p.y += ax.y * sp * dt;
+      p.hunger = Math.max(0, p.hunger - 0.35 * dt);
+      p.stamina = Math.min(100, p.stamina + 9 * dt);
+      if (p.hunger > 30 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + 1.5 * dt);
+
+      if (attack) {
+        let best = null, bd = 90 * 90, isNode = false;
+        for (const m of g.mobs.values()) {
+          const d = (m.x - p.x) ** 2 + (m.y - p.y) ** 2;
+          if (d < bd) { bd = d; best = m; isNode = false; }
+        }
+        if (!best) for (const n of g.nodes.values()) {
+          const d = (n.x - p.x) ** 2 + (n.y - p.y) ** 2;
+          if (d < bd) { bd = d; best = n; isNode = true; }
+        }
+        if (best && !isNode) {
+          const v = this.dmg(12, 2);
+          best.hp -= v;
+          g.renderer.addEffect({ type: 'dmg', x: best.x, y: best.y - 18, val: v });
+          if (best.hp <= 0) {
+            g.renderer.addEffect({ type: 'die', x: best.x, y: best.y });
+            g.mobs.delete(best.id);
+            p.inv.gold += 3;
+            g.ui.feedMsg('+3 vàng', '#ffd76a');
+          }
+        } else if (best) {
+          best.hp -= 1;
+          if (best.hp <= 0) {
+            g.nodes.delete(best.id);
+            const give = best.kind === 'tree' ? { wood: 2 } : best.kind === 'rock' ? { stone: 2 } : { herb: 2 };
+            Object.assign(p.inv, Object.fromEntries(Object.entries(give).map(([k, v]) => [k, (p.inv[k] || 0) + v])));
+            g.ui.feedMsg(`+${Object.values(give)[0]} ${Object.keys(give)[0]}`, '#9fe08a');
+          }
+        }
+      }
+
+      // AI đơn giản: lang thang, đuổi khi gần
+      for (const m of g.mobs.values()) {
+        const dx = p.x - m.x, dy = p.y - m.y, d = Math.hypot(dx, dy);
+        if (d < 170 && d > 30) { m.x += (dx / d) * 55 * dt; m.y += (dy / d) * 55 * dt; }
+        else if (d >= 170) {
+          m.wt -= dt;
+          if (m.wt <= 0) { m.wt = 2 + Math.random() * 3; m.tx = m.hx + (Math.random() - 0.5) * 240; m.ty = m.hy + (Math.random() - 0.5) * 240; }
+          const wx = m.tx - m.x, wy = m.ty - m.y, wl = Math.hypot(wx, wy);
+          if (wl > 6) { m.x += (wx / wl) * 40 * dt; m.y += (wy / wl) * 40 * dt; }
+        } else if (d <= 30) {
+          m.atkCd -= dt;
+          if (m.atkCd <= 0) {
+            m.atkCd = 1.2;
+            const v = this.dmg(6, 4);
+            p.hp -= v;
+            g.renderer.addEffect({ type: 'dmg', x: p.x, y: p.y - 20, val: v, color: '#ff5a5a' });
+            if (p.hp <= 0) { p.hp = 100; p.x = CFG.WORLD_W / 2; p.y = CFG.WORLD_H / 2; g.ui.feedMsg('Bạn đã hồi sinh!', '#9fd0ff'); }
+          }
+        }
+      }
+    }
+  }
+
+  window.Game = Game;
+})();
+
+</script>
+<script>
+/* ==== client/js/main.js ==== */
+/* Khởi động game khi trang load xong (đợi Sunny Land assets load trước) */
+window.addEventListener('load', () => {
+  const canvas = document.getElementById('game');
+  const game = new Game(canvas);
+  const boot = () => game.boot();
+  if (window.Sunny && Sunny.ready) { Sunny.ready.then(boot).catch(boot); setTimeout(boot, 4000); }
+  else boot();
+
+  // Nhạc nền Sunny Land: trình duyệt chỉ cho phát sau khi user tương tác
+  const bgm = document.getElementById('bgm');
+  const muteBtn = document.getElementById('btn-mute');
+  let muted = false;
+  const unlock = () => {
+    if (bgm && !muted && bgm.paused) bgm.play().catch(() => {});
+    window.removeEventListener('pointerdown', unlock);
+    window.removeEventListener('keydown', unlock);
+  };
+  window.addEventListener('pointerdown', unlock);
+  window.addEventListener('keydown', unlock);
+  if (muteBtn) muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    muted = !muted;
+    if (bgm) { if (muted) bgm.pause(); else bgm.play().catch(() => {}); }
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+});
+
+</script>
+</body>
+</html>
