@@ -9,6 +9,7 @@ CSS = ["client/css/style.css"]
 JS = [
     "shared/protocol.js",
     "client/js/sprites.js",
+    "client/js/sunny-data.js",
     "client/js/sunny.js",
     "client/js/input.js",
     "client/js/net.js",

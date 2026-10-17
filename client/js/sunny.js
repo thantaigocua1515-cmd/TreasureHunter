@@ -11,6 +11,12 @@
 
   const IMG = 'assets/img/';
 
+  // Ảnh nhúng base64 (SunnyData) được ưu tiên để không cần file binary trên host tĩnh
+  function srcFor(f) {
+    if (typeof SunnyData !== 'undefined' && SunnyData.img && SunnyData.img[f]) return SunnyData.img[f];
+    return IMG + f;
+  }
+
   // scale: hệ số phóng (giữ số nguyên để pixel-art nét)
   // faceLeft: sprite gốc nhìn sang trái (Foxy) → đảo logic flip
   const DEFS = {
@@ -66,7 +72,7 @@
     rec.p = new Promise((resolve) => {
       img.onload = () => { rec.ok = true; resolve(); };
       img.onerror = () => resolve();
-      img.src = IMG + f;
+      img.src = srcFor(f);
     });
     files[f] = rec;
     return rec.p;

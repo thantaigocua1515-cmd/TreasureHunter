@@ -8,6 +8,10 @@ window.addEventListener('load', () => {
 
   // Nhạc nền Sunny Land: trình duyệt chỉ cho phát sau khi user tương tác
   const bgm = document.getElementById('bgm');
+  if (bgm && !bgm.src) {
+    bgm.src = (window.SunnyData && SunnyData.audio && SunnyData.audio.happywalking)
+      || 'assets/audio/happywalking.ogg';
+  }
   const muteBtn = document.getElementById('btn-mute');
   let muted = false;
   const unlock = () => {
